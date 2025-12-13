@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { randomUUID } from "node:crypto";
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -10,6 +14,7 @@ import {
 import { lookupEndpoint } from "@/middleware/lookup-endpoint-middleware";
 
 import { metaMcpServerPool } from "../../lib/metamcp/metamcp-server-pool";
+import { SearchMode } from "../../lib/metamcp/smart-proxy";
 import { SessionLifetimeManagerImpl } from "../../lib/session-lifetime-manager";
 
 const streamableHttpRouter = express.Router();
@@ -110,7 +115,7 @@ streamableHttpRouter.post(
   authenticateApiKey,
   async (req, res) => {
     const authReq = req as ApiKeyAuthenticatedRequest;
-    const { namespaceUuid, endpointName } = authReq;
+    const { namespaceUuid, endpointName, endpoint } = authReq;
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
     // Log authentication information for debugging
@@ -131,9 +136,14 @@ streamableHttpRouter.post(
         );
 
         // Get or create MetaMCP server instance from the pool
+        const searchMode = endpoint.search_mode === 'embeddings' ? SearchMode.EMBEDDINGS : SearchMode.KEYWORD;
+        console.log(`[DEBUG] Endpoint search_mode from DB: '${endpoint.search_mode}', enable_smart_mode: ${endpoint.enable_smart_mode}, resolved searchMode: ${searchMode}`);
         const mcpServerInstance = await metaMcpServerPool.getServer(
           newSessionId,
           namespaceUuid,
+          false, // includeInactiveServers
+          endpoint.enable_smart_mode ?? false, // enableSmartMode
+          searchMode,
         );
         if (!mcpServerInstance) {
           throw new Error("Failed to get MetaMCP server instance from pool");

@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import {
   CreateEndpointRequestSchema,
   CreateEndpointResponseSchema,
@@ -72,6 +76,8 @@ export const endpointsImplementations = {
         namespace_uuid: input.namespaceUuid,
         enable_api_key_auth: input.enableApiKeyAuth ?? true,
         enable_oauth: input.enableOauth ?? false,
+        enable_smart_mode: input.enableSmartMode ?? false,
+        search_mode: input.searchMode ?? 'keyword',
         use_query_param_auth: input.useQueryParamAuth ?? false,
         user_id: effectiveUserId,
       });
@@ -333,6 +339,8 @@ export const endpointsImplementations = {
         namespace_uuid: input.namespaceUuid,
         enable_api_key_auth: input.enableApiKeyAuth,
         enable_oauth: input.enableOauth,
+        enable_smart_mode: input.enableSmartMode,
+        search_mode: input.searchMode,
         use_query_param_auth: input.useQueryParamAuth,
       });
 

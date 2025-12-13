@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import express from "express";
@@ -9,6 +13,7 @@ import {
 import { lookupEndpoint } from "@/middleware/lookup-endpoint-middleware";
 
 import { metaMcpServerPool } from "../../lib/metamcp/metamcp-server-pool";
+import { SearchMode } from "../../lib/metamcp/smart-proxy";
 import { SessionLifetimeManagerImpl } from "../../lib/session-lifetime-manager";
 
 const sseRouter = express.Router();
@@ -54,7 +59,7 @@ sseRouter.get(
   authenticateApiKey,
   async (req, res) => {
     const authReq = req as ApiKeyAuthenticatedRequest;
-    const { namespaceUuid, endpointName } = authReq;
+    const { namespaceUuid, endpointName, endpoint } = authReq;
 
     try {
       console.log(
@@ -70,9 +75,13 @@ sseRouter.get(
       const sessionId = webAppTransport.sessionId;
 
       // Get or create MetaMCP server instance from the pool
+      const searchMode = endpoint.search_mode === 'embeddings' ? SearchMode.EMBEDDINGS : SearchMode.KEYWORD;
       const mcpServerInstance = await metaMcpServerPool.getServer(
         sessionId,
         namespaceUuid,
+        false, // includeInactiveServers
+        endpoint.enable_smart_mode ?? false, // enableSmartMode
+        searchMode,
       );
       if (!mcpServerInstance) {
         throw new Error("Failed to get MetaMCP server instance from pool");

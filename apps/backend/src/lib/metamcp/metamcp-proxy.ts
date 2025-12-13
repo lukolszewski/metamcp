@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
@@ -22,6 +26,7 @@ import {
 import { z } from "zod";
 
 import { toolsImplementations } from "../../trpc/tools.impl";
+import { toolsRepository } from "../../db/repositories/tools.repo";
 import { configService } from "../config.service";
 import { ConnectedClient } from "./client";
 import { getMcpServers } from "./fetch-metamcp";
@@ -30,6 +35,7 @@ import { toolsSyncCache } from "./tools-sync-cache";
 import {
   createFilterCallToolMiddleware,
   createFilterListToolsMiddleware,
+  filterActiveTools,
 } from "./metamcp-middleware/filter-tools.functional";
 import {
   CallToolHandler,
@@ -41,7 +47,9 @@ import {
   createToolOverridesCallToolMiddleware,
   createToolOverridesListToolsMiddleware,
   mapOverrideNameToOriginal,
+  applyToolOverrides,
 } from "./metamcp-middleware/tool-overrides.functional";
+import { SmartMCPProxy, SearchMode } from "./smart-proxy";
 import { parseToolName } from "./tool-name-parser";
 import { sanitizeName } from "./utils";
 
@@ -76,10 +84,12 @@ async function filterOutOverrideTools(
         // this tool is an override and should be filtered out
         if (originalName !== fullToolName) {
           // This is an override, skip it (don't save to database)
+          console.log(`[DEBUG-FILTER] 🚫 Filtered out ${fullToolName} (override of ${originalName})`);
           return;
         }
 
         // This is not an override, include it
+        console.log(`[DEBUG-FILTER] ✅ Including ${fullToolName} (not an override)`);
         filteredTools.push(tool);
       } catch (error) {
         console.error(
@@ -87,6 +97,7 @@ async function filterOutOverrideTools(
           error,
         );
         // On error, include the tool (fail-safe behavior)
+        console.log(`[DEBUG-FILTER] ⚠️  Including ${tool.name} due to error`);
         filteredTools.push(tool);
       }
     }),
@@ -99,11 +110,48 @@ export const createServer = async (
   namespaceUuid: string,
   sessionId: string,
   includeInactiveServers: boolean = false,
+  enableSmartMode: boolean = false,
+  searchMode: SearchMode = SearchMode.KEYWORD,
 ) => {
   const toolToClient: Record<string, ConnectedClient> = {};
   const toolToServerUuid: Record<string, string> = {};
+  const toolNameToUuid: Record<string, string> = {};  // Maps full tool name to tool UUID
   const promptToClient: Record<string, ConnectedClient> = {};
   const resourceToClient: Record<string, ConnectedClient> = {};
+
+  // Initialize Smart Proxy if enabled
+  console.log(`[DEBUG] Creating SmartMCPProxy - enableSmartMode=${enableSmartMode}, searchMode=${searchMode}`);
+  console.log(`[DEBUG] process.env.EMBEDDINGS_API_KEY=${process.env.EMBEDDINGS_API_KEY ? process.env.EMBEDDINGS_API_KEY[0] + '*'.repeat(process.env.EMBEDDINGS_API_KEY.length - 1) : 'UNDEFINED'}`);
+  console.log(`[DEBUG] process.env.EMBEDDINGS_API_URL=${process.env.EMBEDDINGS_API_URL || 'http://localhost:11434/v1 (default)'}`);
+  console.log(`[DEBUG] process.env.EMBEDDING_MODEL=${process.env.EMBEDDING_MODEL || 'not set (will use default)'}`);
+
+  // Dynamic limit configuration from environment variables
+  const dynamicLimitConfig = {
+    maxResults: parseInt(process.env.SMART_PROXY_MAX_RESULTS || '10'),
+    dropThreshold: parseFloat(process.env.SMART_PROXY_DROP_THRESHOLD || '0.30'),
+    minScore: parseFloat(process.env.SMART_PROXY_MIN_SCORE || '0.3'),
+  };
+
+  // Truncation configuration from environment variables
+  const truncationConfig = {
+    delimiter: process.env.EMBEDDING_TRUNCATE_DELIMITER || "\n",
+    occurrence: parseInt(process.env.EMBEDDING_TRUNCATE_OCCURRENCE || '1'),
+    minLength: parseInt(process.env.EMBEDDING_TRUNCATE_MIN_LENGTH || '5'),
+    enabled: process.env.EMBEDDING_TRUNCATE_ENABLED !== 'false', // Enabled by default
+  };
+
+  const smartProxy = enableSmartMode ? new SmartMCPProxy({
+    fuzzy: 0.2,
+    descriptionBoost: 2,
+    discoverLimit: 5,
+    searchMode,
+    apiKey: process.env.EMBEDDINGS_API_KEY,
+    apiUrl: process.env.EMBEDDINGS_API_URL,
+    embeddingModel: process.env.EMBEDDING_MODEL || 'BAAI/bge-m3',
+    namespaceUuid,
+    dynamicLimitConfig,
+    truncationConfig,
+  }) : null;
 
   // Helper function to detect if a server is the same instance
   const isSameServerInstance = (
@@ -248,21 +296,43 @@ export const createServer = async (
             console.log(`[DEBUG-TOOLS] 🔍 Hash check for ${serverName}: ${hasChanged ? 'CHANGED' : 'UNCHANGED'}`);
 
             if (hasChanged) {
+              console.log(`[DEBUG-FILTER] Before filtering: ${allServerTools.length} tools from ${serverName}`);
               const toolsToSave = await filterOutOverrideTools(
                 allServerTools,
                 namespaceUuid,
                 serverName,
               );
+              console.log(`[DEBUG-FILTER] After filtering: ${toolsToSave.length} tools from ${serverName}`);
+              console.log(`[DEBUG-FILTER] Filtered out ${allServerTools.length - toolsToSave.length} tools as overrides`);
 
               if (toolsToSave.length > 0) {
-                // Update cache
-                toolsSyncCache.update(mcpServerUuid, toolNames);
-                
-                // Sync with cleanup
-                await toolsImplementations.sync({
+                console.log(`[DEBUG-SYNC] Starting sync for ${serverName} with ${toolsToSave.length} tools`);
+
+                // Sync with cleanup (cache update happens inside sync())
+                const syncResult = await toolsImplementations.sync({
                   tools: toolsToSave,
                   mcpServerUuid: mcpServerUuid,
                 });
+
+                console.log(`[DEBUG-SYNC] Sync completed for ${serverName}:`, syncResult);
+              } else {
+                console.log(`[DEBUG-FILTER] ⚠️  WARNING: All tools from ${serverName} were filtered out! No tools will be saved to database.`);
+              }
+            }
+
+            // Fetch tool UUIDs from database (needed for embeddings)
+            // Do this regardless of whether tools changed
+            if (enableSmartMode) {
+              try {
+                const dbTools = await toolsRepository.findByMcpServerUuid(mcpServerUuid);
+                console.log(`[DEBUG-EMBEDDINGS] Fetched ${dbTools.length} tool UUIDs from database for server ${serverName}`);
+                dbTools.forEach((dbTool) => {
+                  const fullToolName = `${sanitizeName(serverName)}__${dbTool.name}`;
+                  toolNameToUuid[fullToolName] = dbTool.uuid;
+                  console.log(`[DEBUG-EMBEDDINGS] Mapped ${fullToolName} -> ${dbTool.uuid}`);
+                });
+              } catch (error) {
+                console.error(`Error fetching tool UUIDs for server ${serverName}:`, error);
               }
             }
           } catch (dbError) {
@@ -295,6 +365,93 @@ export const createServer = async (
     const totalTime = performance.now() - startTime;
     console.log(`[DEBUG-TOOLS] ✅ tools/list completed in ${totalTime.toFixed(2)}ms, returning ${allTools.length} tools`);
     
+    if (enableSmartMode && smartProxy) {
+      console.log(`[DEBUG-EMBEDDINGS] Starting indexing with overrides and filters, total tools: ${allTools.length}`);
+      console.log(`[DEBUG-EMBEDDINGS] toolNameToUuid mapping has ${Object.keys(toolNameToUuid).length} entries`);
+
+      // Step 1: Apply tool overrides to get the names/descriptions the user will see
+      const toolsWithOverrides = await applyToolOverrides(
+        allTools,
+        namespaceUuid,
+        true,  // useCache
+        false  // not persistent (middleware cache handles persistence)
+      );
+
+      console.log(`[DEBUG-EMBEDDINGS] Applied overrides: ${allTools.length} → ${toolsWithOverrides.length} tools`);
+
+      // Step 2: Filter out inactive/disabled tools to avoid wasting API calls
+      const activeToolsWithOverrides = await filterActiveTools(
+        toolsWithOverrides,
+        namespaceUuid,
+        true  // useCache
+      );
+
+      console.log(`[DEBUG-EMBEDDINGS] Filtered inactive tools: ${toolsWithOverrides.length} → ${activeToolsWithOverrides.length} active tools`);
+
+      // Step 3: Collect tools for indexing
+      const toolsToIndex: {
+        tool: Tool,
+        client: ConnectedClient,
+        serverName: string,
+        originalName: string,
+        toolUuid: string
+      }[] = [];
+
+      console.log(`[DEBUG-EMBEDDINGS] Processing ${activeToolsWithOverrides.length} active tools with overrides`);
+
+      await Promise.allSettled(
+        activeToolsWithOverrides.map(async (tool) => {
+          try {
+            // Parse the tool name (may be override or original)
+            const parsed = parseToolName(tool.name);
+            if (!parsed) {
+              console.log(`[DEBUG-EMBEDDINGS] Skipping ${tool.name}: failed to parse name`);
+              return;
+            }
+
+            // Map back to original name for lookups (sessions and UUIDs are keyed by original name)
+            const originalFullName = await mapOverrideNameToOriginal(
+              tool.name,
+              namespaceUuid,
+              true
+            );
+
+            const session = toolToClient[originalFullName];
+            if (!session) {
+              console.log(`[DEBUG-EMBEDDINGS] Skipping ${tool.name}: no session for original ${originalFullName}`);
+              return;
+            }
+
+            const toolUuid = toolNameToUuid[originalFullName];
+            if (!toolUuid) {
+              console.log(`[DEBUG-EMBEDDINGS] Skipping ${tool.name}: no UUID for original ${originalFullName}`);
+              return;
+            }
+
+            console.log(`[DEBUG-EMBEDDINGS] Including ${tool.name} (original: ${originalFullName}) with UUID ${toolUuid}`);
+
+            toolsToIndex.push({
+              tool,  // Tool with override name and description ✅
+              client: session,
+              serverName: parsed.serverName,
+              originalName: parsed.originalToolName,
+              toolUuid,
+            });
+          } catch (error) {
+            console.error(`[DEBUG-EMBEDDINGS] Error processing tool ${tool.name}:`, error);
+          }
+        })
+      );
+
+      console.log(`[DEBUG-EMBEDDINGS] Indexing ${toolsToIndex.length} active tools with override names/descriptions`);
+
+      // Index the tools (now async)
+      await smartProxy.indexTools(toolsToIndex);
+
+      // Return only the proxy tools
+      return { tools: smartProxy.getTools() };
+    }
+
     return { tools: allTools };
   };
 
@@ -304,6 +461,15 @@ export const createServer = async (
     _context,
   ) => {
     const { name, arguments: args } = request.params;
+
+    if (enableSmartMode && smartProxy) {
+      if (name === "discover") {
+        return await smartProxy.discover(args as any);
+      }
+      if (name === "execute") {
+        return await smartProxy.execute(args as any);
+      }
+    }
 
     // Parse the tool name using shared utility
     const parsed = parseToolName(name);

@@ -35,7 +35,7 @@ class DbOAuthClientProvider implements OAuthClientProvider {
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       client_name: "MetaMCP",
-      client_uri: "https://github.com/metatool-ai/metamcp",
+      client_uri: "https://github.com/lukolszewski/metamcp",
     };
   }
 

@@ -1,6 +1,14 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { z } from "zod";
 
 import { DatabaseNamespaceSchema, NamespaceSchema } from "./namespaces.zod";
+
+// Search mode enum
+export const SearchModeEnum = z.enum(['keyword', 'embeddings']);
+export type SearchMode = z.infer<typeof SearchModeEnum>;
 
 // Endpoint schema definitions
 export const createEndpointFormSchema = z.object({
@@ -12,6 +20,8 @@ export const createEndpointFormSchema = z.object({
   namespaceUuid: z.string().uuid("Please select a valid namespace"),
   enableApiKeyAuth: z.boolean(),
   enableOauth: z.boolean(),
+  enableSmartMode: z.boolean(),
+  searchMode: SearchModeEnum.optional().default('keyword'),
   useQueryParamAuth: z.boolean(),
   createMcpServer: z.boolean(),
   user_id: z.string().nullable().optional(),
@@ -26,6 +36,8 @@ export const editEndpointFormSchema = z.object({
   namespaceUuid: z.string().uuid("Please select a valid namespace"),
   enableApiKeyAuth: z.boolean().optional(),
   enableOauth: z.boolean().optional(),
+  enableSmartMode: z.boolean().optional(),
+  searchMode: SearchModeEnum.optional(),
   useQueryParamAuth: z.boolean().optional(),
   user_id: z.string().nullable().optional(),
 });
@@ -39,6 +51,8 @@ export const CreateEndpointRequestSchema = z.object({
   namespaceUuid: z.string().uuid(),
   enableApiKeyAuth: z.boolean().default(true),
   enableOauth: z.boolean().default(false),
+  enableSmartMode: z.boolean().default(false),
+  searchMode: SearchModeEnum.optional().default('keyword'),
   useQueryParamAuth: z.boolean().default(false),
   createMcpServer: z.boolean().default(true),
   user_id: z.string().nullable().optional(),
@@ -51,6 +65,8 @@ export const EndpointSchema = z.object({
   namespace_uuid: z.string(),
   enable_api_key_auth: z.boolean(),
   enable_oauth: z.boolean(),
+  enable_smart_mode: z.boolean(),
+  search_mode: z.string(),
   use_query_param_auth: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -90,6 +106,8 @@ export const UpdateEndpointRequestSchema = z.object({
   namespaceUuid: z.string().uuid(),
   enableApiKeyAuth: z.boolean().optional(),
   enableOauth: z.boolean().optional(),
+  enableSmartMode: z.boolean().optional(),
+  searchMode: SearchModeEnum.optional(),
   useQueryParamAuth: z.boolean().optional(),
   user_id: z.string().nullable().optional(),
 });
@@ -136,6 +154,8 @@ export const EndpointCreateInputSchema = z.object({
   namespace_uuid: z.string(),
   enable_api_key_auth: z.boolean().optional().default(true),
   enable_oauth: z.boolean().optional().default(false),
+  enable_smart_mode: z.boolean().optional().default(false),
+  search_mode: z.string().optional().default('keyword'),
   use_query_param_auth: z.boolean().optional().default(false),
   user_id: z.string().nullable().optional(),
 });
@@ -147,6 +167,8 @@ export const EndpointUpdateInputSchema = z.object({
   namespace_uuid: z.string(),
   enable_api_key_auth: z.boolean().optional(),
   enable_oauth: z.boolean().optional(),
+  enable_smart_mode: z.boolean().optional(),
+  search_mode: z.string().optional(),
   use_query_param_auth: z.boolean().optional(),
   user_id: z.string().nullable().optional(),
 });
@@ -162,6 +184,8 @@ export const DatabaseEndpointSchema = z.object({
   namespace_uuid: z.string(),
   enable_api_key_auth: z.boolean(),
   enable_oauth: z.boolean(),
+  enable_smart_mode: z.boolean(),
+  search_mode: z.string(),
   use_query_param_auth: z.boolean(),
   created_at: z.date(),
   updated_at: z.date(),

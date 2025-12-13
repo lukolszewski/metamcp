@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { ServerParameters } from "@repo/zod-types";
 
 import { mcpServersRepository, namespacesRepository } from "../db/repositories";
@@ -53,12 +57,15 @@ export async function initializeIdleServers() {
     }
 
     // Ensure idle servers for all namespaces (MetaMCP server pool)
-    if (namespaceUuids.length > 0) {
-      await metaMcpServerPool.ensureIdleServers(namespaceUuids, true);
-      console.log(
-        "✅ Successfully initialized idle servers for all namespaces",
-      );
-    }
+    // DISABLED: Pre-creating idle servers without endpoint context causes them to use default search mode
+    // Idle servers are now created on-demand with the correct endpoint configuration
+    // if (namespaceUuids.length > 0) {
+    //   await metaMcpServerPool.ensureIdleServers(namespaceUuids, true);
+    //   console.log(
+    //     "✅ Successfully initialized idle servers for all namespaces",
+    //   );
+    // }
+    console.log("ℹ️  Idle MetaMCP servers will be created on-demand with endpoint-specific configuration");
 
     console.log(
       "✅ Successfully initialized idle servers for all namespaces and all MCP servers",

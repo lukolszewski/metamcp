@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import {
   CreateNamespaceRequestSchema,
   CreateNamespaceResponseSchema,
@@ -65,6 +69,14 @@ export const createNamespacesRouter = (
       input: z.infer<typeof UpdateNamespaceToolOverridesRequestSchema>,
       userId: string,
     ) => Promise<z.infer<typeof UpdateNamespaceToolOverridesResponseSchema>>;
+    getToolsWithEmbeddings: (
+      input: { namespaceUuid: string; modelName?: string },
+      userId: string,
+    ) => Promise<string[]>;
+    deleteToolEmbedding: (
+      input: { namespaceUuid: string; toolUuid: string },
+      userId: string,
+    ) => Promise<{ success: boolean; message?: string }>;
     refreshTools: (
       input: z.infer<typeof RefreshNamespaceToolsRequestSchema>,
       userId: string,
@@ -141,6 +153,37 @@ export const createNamespacesRouter = (
       .output(UpdateNamespaceToolOverridesResponseSchema)
       .mutation(async ({ input, ctx }) => {
         return await implementations.updateToolOverrides(input, ctx.user.id);
+      }),
+
+    // Protected: Get tool UUIDs with embeddings
+    getToolsWithEmbeddings: protectedProcedure
+      .input(
+        z.object({
+          namespaceUuid: z.string().uuid(),
+          modelName: z.string().optional(),
+        })
+      )
+      .output(z.array(z.string().uuid()))
+      .query(async ({ input, ctx }) => {
+        return await implementations.getToolsWithEmbeddings(input, ctx.user.id);
+      }),
+
+    // Protected: Delete tool embedding
+    deleteToolEmbedding: protectedProcedure
+      .input(
+        z.object({
+          namespaceUuid: z.string().uuid(),
+          toolUuid: z.string().uuid(),
+        })
+      )
+      .output(
+        z.object({
+          success: z.boolean(),
+          message: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        return await implementations.deleteToolEmbedding(input, ctx.user.id);
       }),
 
     // Protected: Refresh tools from MetaMCP connection

@@ -1,8 +1,13 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 
 import { configService } from "../config.service";
 import { mcpServerPool } from "./mcp-server-pool";
 import { createServer } from "./metamcp-proxy";
+import { SearchMode } from "./smart-proxy";
 
 export interface MetaMcpServerInstance {
   server: Server;
@@ -63,27 +68,34 @@ export class MetaMcpServerPool {
     sessionId: string,
     namespaceUuid: string,
     includeInactiveServers: boolean = false,
+    enableSmartMode: boolean = false,
+    searchMode: SearchMode = SearchMode.KEYWORD,
   ): Promise<MetaMcpServerInstance | undefined> {
     // Check if we already have an active server for this sessionId
     if (this.activeServers[sessionId]) {
       return this.activeServers[sessionId];
     }
 
+    // Determine the idle pool key based on smart mode AND search mode
+    const poolKey = enableSmartMode
+      ? `${namespaceUuid}_smart_${searchMode}`
+      : namespaceUuid;
+
     // Check if we have an idle server for this namespace that we can convert
-    const idleServer = this.idleServers[namespaceUuid];
+    const idleServer = this.idleServers[poolKey];
     if (idleServer) {
       // Convert idle server to active server
-      delete this.idleServers[namespaceUuid];
+      delete this.idleServers[poolKey];
       this.activeServers[sessionId] = idleServer;
-      this.sessionToNamespace[sessionId] = namespaceUuid;
+      this.sessionToNamespace[sessionId] = poolKey; // Store poolKey instead of just namespaceUuid to ensure correct restoration
       this.sessionTimestamps[sessionId] = Date.now();
 
       console.log(
-        `Converted idle MetaMCP server to active for namespace ${namespaceUuid}, session ${sessionId}`,
+        `Converted idle MetaMCP server to active for namespace ${namespaceUuid} (SmartMode: ${enableSmartMode}), session ${sessionId}`,
       );
 
       // Create a new idle server to replace the one we just used (ASYNC - NON-BLOCKING)
-      this.createIdleServerAsync(namespaceUuid, includeInactiveServers);
+      this.createIdleServerAsync(namespaceUuid, includeInactiveServers, enableSmartMode, searchMode);
 
       return idleServer;
     }
@@ -93,21 +105,23 @@ export class MetaMcpServerPool {
       sessionId,
       namespaceUuid,
       includeInactiveServers,
+      enableSmartMode,
+      searchMode,
     );
     if (!newServer) {
       return undefined;
     }
 
     this.activeServers[sessionId] = newServer;
-    this.sessionToNamespace[sessionId] = namespaceUuid;
+    this.sessionToNamespace[sessionId] = poolKey; // Store poolKey
     this.sessionTimestamps[sessionId] = Date.now();
 
     console.log(
-      `Created new active MetaMCP server for namespace ${namespaceUuid}, session ${sessionId}`,
+      `Created new active MetaMCP server for namespace ${namespaceUuid} (SmartMode: ${enableSmartMode}), session ${sessionId}`,
     );
 
     // Also create an idle server for future use (ASYNC - NON-BLOCKING)
-    this.createIdleServerAsync(namespaceUuid, includeInactiveServers);
+    this.createIdleServerAsync(namespaceUuid, includeInactiveServers, enableSmartMode, searchMode);
 
     return newServer;
   }
@@ -119,6 +133,8 @@ export class MetaMcpServerPool {
     sessionId: string,
     namespaceUuid: string,
     includeInactiveServers: boolean = false,
+    enableSmartMode: boolean = false,
+    searchMode: SearchMode = SearchMode.KEYWORD,
   ): Promise<MetaMcpServerInstance | undefined> {
     try {
       // Create the MetaMCP server - MCP server pool is pre-warmed during startup
@@ -126,6 +142,8 @@ export class MetaMcpServerPool {
         namespaceUuid,
         sessionId,
         includeInactiveServers,
+        enableSmartMode,
+        searchMode,
       );
 
       return serverInstance;
@@ -176,37 +194,44 @@ export class MetaMcpServerPool {
   private createIdleServerAsync(
     namespaceUuid: string,
     includeInactiveServers: boolean = false,
+    enableSmartMode: boolean = false,
+    searchMode: SearchMode = SearchMode.KEYWORD,
   ): void {
+    // Determine the pool key based on smart mode and search mode
+    const poolKey = enableSmartMode
+      ? `${namespaceUuid}_smart_${searchMode}`
+      : namespaceUuid;
+
     // Don't create if we already have an idle server or are already creating one
     if (
-      this.idleServers[namespaceUuid] ||
-      this.creatingIdleServers.has(namespaceUuid)
+      this.idleServers[poolKey] ||
+      this.creatingIdleServers.has(poolKey)
     ) {
       return;
     }
 
-    // Mark that we're creating an idle server for this namespace
-    this.creatingIdleServers.add(namespaceUuid);
+    // Mark that we're creating an idle server for this pool key
+    this.creatingIdleServers.add(poolKey);
 
     // Create the server in the background (fire and forget)
-    const tempSessionId = `idle_${namespaceUuid}_${Date.now()}`;
+    const tempSessionId = `idle_${poolKey}_${Date.now()}`;
 
-    this.createNewServer(tempSessionId, namespaceUuid, includeInactiveServers)
+    this.createNewServer(tempSessionId, namespaceUuid, includeInactiveServers, enableSmartMode, searchMode)
       .then((newServer) => {
-        if (newServer && !this.idleServers[namespaceUuid]) {
+        if (newServer && !this.idleServers[poolKey]) {
           const wrappedServer: MetaMcpServerInstance = {
             server: newServer.server,
             cleanup: newServer.cleanup,
           };
-          this.idleServers[namespaceUuid] = wrappedServer;
+          this.idleServers[poolKey] = wrappedServer;
           console.log(
-            `Created background idle MetaMCP server for namespace ${namespaceUuid}`,
+            `Created background idle MetaMCP server for namespace ${namespaceUuid} (SmartMode: ${enableSmartMode}, SearchMode: ${searchMode})`,
           );
         } else if (newServer) {
           // We already have an idle server, cleanup the extra one
           newServer.cleanup().catch((error) => {
             console.error(
-              `Error cleaning up extra idle MetaMCP server for ${namespaceUuid}:`,
+              `Error cleaning up extra idle MetaMCP server for ${poolKey}:`,
               error,
             );
           });
@@ -214,13 +239,13 @@ export class MetaMcpServerPool {
       })
       .catch((error) => {
         console.error(
-          `Error creating background idle MetaMCP server for ${namespaceUuid}:`,
+          `Error creating background idle MetaMCP server for ${poolKey}:`,
           error,
         );
       })
       .finally(() => {
         // Remove from creating set
-        this.creatingIdleServers.delete(namespaceUuid);
+        this.creatingIdleServers.delete(poolKey);
       });
   }
 
@@ -446,9 +471,11 @@ export class MetaMcpServerPool {
   async getOpenApiServer(
     namespaceUuid: string,
     includeInactiveServers: boolean = false,
+    enableSmartMode: boolean = false,
   ): Promise<MetaMcpServerInstance | undefined> {
     // Use a deterministic session ID for OpenAPI endpoints
-    const sessionId = `openapi_${namespaceUuid}`;
+    const poolKey = enableSmartMode ? `${namespaceUuid}_smart` : namespaceUuid;
+    const sessionId = `openapi_${poolKey}`;
 
     // Check if we already have an active server for this OpenAPI session
     if (this.activeServers[sessionId]) {
@@ -456,16 +483,16 @@ export class MetaMcpServerPool {
     }
 
     // Check if we have an idle server for this namespace that we can convert
-    const idleServer = this.idleServers[namespaceUuid];
+    const idleServer = this.idleServers[poolKey];
     if (idleServer) {
       // Convert idle server to active OpenAPI server
-      delete this.idleServers[namespaceUuid];
+      delete this.idleServers[poolKey];
       this.activeServers[sessionId] = idleServer;
-      this.sessionToNamespace[sessionId] = namespaceUuid;
+      this.sessionToNamespace[sessionId] = poolKey;
       this.sessionTimestamps[sessionId] = Date.now();
 
       console.log(
-        `Converted idle MetaMCP server to OpenAPI server for namespace ${namespaceUuid}, session ${sessionId}`,
+        `Converted idle MetaMCP server to OpenAPI server for namespace ${namespaceUuid} (SmartMode: ${enableSmartMode}), session ${sessionId}`,
       );
 
       // Create a new idle server to replace the one we just used (SYNC - BLOCKING)
@@ -479,17 +506,18 @@ export class MetaMcpServerPool {
       sessionId,
       namespaceUuid,
       includeInactiveServers,
+      enableSmartMode,
     );
     if (!newServer) {
       return undefined;
     }
 
     this.activeServers[sessionId] = newServer;
-    this.sessionToNamespace[sessionId] = namespaceUuid;
+    this.sessionToNamespace[sessionId] = poolKey;
     this.sessionTimestamps[sessionId] = Date.now();
 
     console.log(
-      `Created new OpenAPI MetaMCP server for namespace ${namespaceUuid}, session ${sessionId}`,
+      `Created new OpenAPI MetaMCP server for namespace ${namespaceUuid} (SmartMode: ${enableSmartMode}), session ${sessionId}`,
     );
 
     // Also create an idle server for future use (SYNC - BLOCKING)

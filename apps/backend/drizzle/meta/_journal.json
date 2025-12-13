@@ -92,6 +92,27 @@
       "when": 1764122318274,
       "tag": "0012_crazy_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1765595633454,
+      "tag": "0013_perfect_slapstick",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1765623431104,
+      "tag": "0014_add_tool_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1765623431105,
+      "tag": "0015_add_search_mode",
+      "breakpoints": true
     }
   ]
 }

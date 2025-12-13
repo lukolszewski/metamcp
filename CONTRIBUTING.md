@@ -6,7 +6,7 @@ We welcome contributions to MetaMCP! This guide will help you get started.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/metatool-ai/metamcp.git
+   git clone https://github.com/lukolszewski/metamcp.git
    cd metamcp
    ```
 

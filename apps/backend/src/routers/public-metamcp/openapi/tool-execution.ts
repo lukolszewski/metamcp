@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { CallToolRequest } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
 
@@ -11,19 +15,22 @@ export const executeToolWithMiddleware = async (
   res: express.Response,
   toolArguments: Record<string, unknown>,
 ) => {
-  const { namespaceUuid } = req;
+  const { namespaceUuid, endpoint } = req;
   const toolName = req.params.tool_name;
 
   try {
+    const enableSmartMode = endpoint.enable_smart_mode ?? false;
+
     // Get or create persistent OpenAPI session for this namespace
     const mcpServerInstance =
-      await metaMcpServerPool.getOpenApiServer(namespaceUuid);
+      await metaMcpServerPool.getOpenApiServer(namespaceUuid, false, enableSmartMode);
     if (!mcpServerInstance) {
       throw new Error("Failed to get MetaMCP server instance from pool");
     }
 
     // Use deterministic session ID for OpenAPI endpoints
-    const sessionId = `openapi_${namespaceUuid}`;
+    const poolKey = enableSmartMode ? `${namespaceUuid}_smart` : namespaceUuid;
+    const sessionId = `openapi_${poolKey}`;
 
     // Create middleware-enabled handlers
     const { handlerContext, callToolWithMiddleware } =

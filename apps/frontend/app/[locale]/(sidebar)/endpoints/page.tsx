@@ -1,5 +1,9 @@
 "use client";
 
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import {
   CreateEndpointFormData,
   createEndpointFormSchema,
@@ -27,6 +31,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useTranslations } from "@/hooks/useTranslations";
@@ -72,6 +83,8 @@ export default function EndpointsPage() {
           namespaceUuid: "",
           enableApiKeyAuth: true,
           enableOauth: false,
+          enableSmartMode: false,
+          searchMode: "keyword",
           useQueryParamAuth: false,
           createMcpServer: true,
           user_id: undefined, // Default to "For myself" (Private)
@@ -109,6 +122,8 @@ export default function EndpointsPage() {
       namespaceUuid: "",
       enableApiKeyAuth: true,
       enableOauth: false,
+      enableSmartMode: false,
+      searchMode: "keyword",
       useQueryParamAuth: false,
       createMcpServer: true,
       user_id: undefined, // Default to "For myself" (Private)
@@ -125,6 +140,8 @@ export default function EndpointsPage() {
         namespaceUuid: data.namespaceUuid,
         enableApiKeyAuth: data.enableApiKeyAuth,
         enableOauth: data.enableOauth,
+        enableSmartMode: data.enableSmartMode,
+        searchMode: data.searchMode,
         useQueryParamAuth: data.useQueryParamAuth,
         createMcpServer: data.createMcpServer,
         user_id: data.user_id,
@@ -162,6 +179,8 @@ export default function EndpointsPage() {
       namespaceUuid: "",
       enableApiKeyAuth: true,
       enableOauth: false,
+      enableSmartMode: false,
+      searchMode: "keyword",
       useQueryParamAuth: false,
       createMcpServer: true,
       user_id: undefined, // Default to "For myself" (Private)
@@ -415,6 +434,82 @@ export default function EndpointsPage() {
                       <p className="text-sm text-yellow-800 dark:text-yellow-200">
                         {t("endpoints:oauthHttpsWarning")}
                       </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Smart Mode Settings */}
+                <div className="space-y-4 border-t pt-4">
+                  <h4 className="text-sm font-medium">Smart Mode</h4>
+
+                  {/* Enable Smart Mode */}
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <label className="text-sm font-medium">
+                        Enable Smart Mode
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Uses an intelligent proxy to discover and execute tools,
+                        reducing context size.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.watch("enableSmartMode")}
+                      onCheckedChange={(checked) => {
+                        form.setValue("enableSmartMode", checked);
+                        if (!checked) {
+                          form.setValue("searchMode", "keyword");
+                        }
+                      }}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  {/* Search Mode Selection - only show when Smart Mode is enabled */}
+                  {form.watch("enableSmartMode") && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Search Method</label>
+                      <Select
+                        value={form.watch("searchMode")}
+                        onValueChange={(value: "keyword" | "embeddings") =>
+                          form.setValue("searchMode", value)
+                        }
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select search method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="keyword">
+                            <div className="flex flex-col items-start">
+                              <span className="font-medium">Keyword Search</span>
+                              <span className="text-xs text-muted-foreground">
+                                Fast, basic text matching (default)
+                              </span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="embeddings">
+                            <div className="flex flex-col items-start">
+                              <span className="font-medium">
+                                AI Search (Embeddings)
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                Semantic understanding using AI
+                              </span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      {form.watch("searchMode") === "embeddings" && (
+                        <div className="rounded-md bg-blue-50 dark:bg-blue-950/20 p-3 text-xs border border-blue-200 dark:border-blue-800/30">
+                          <p className="text-blue-800 dark:text-blue-200">
+                            <strong>Note:</strong> AI Search requires
+                            EMBEDDINGS_API_KEY to be configured. Tools will be
+                            indexed on first connection (may take a few seconds).
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

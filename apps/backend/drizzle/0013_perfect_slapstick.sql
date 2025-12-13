@@ -1,0 +1,1 @@
+ALTER TABLE "endpoints" ADD COLUMN "enable_smart_mode" boolean DEFAULT false NOT NULL;

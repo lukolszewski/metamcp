@@ -1,5 +1,9 @@
 "use client";
 
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { NamespaceTool, ToolStatusEnum } from "@repo/zod-types";
 import {
   Braces,
@@ -18,6 +22,7 @@ import {
   RotateCcw,
   Search,
   Server,
+  Trash2,
   Wrench,
   X,
 } from "lucide-react";
@@ -32,6 +37,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -204,6 +210,61 @@ export function EnhancedNamespaceToolsTable({
         );
       },
     });
+
+  // Fetch tools with embeddings (runs once)
+  const { data: toolsWithEmbeddings } =
+    trpc.frontend.namespaces.getToolsWithEmbeddings.useQuery(
+      {
+        namespaceUuid,
+        // TODO: Get model name from config/environment
+        modelName: "BAAI/bge-m3",
+      },
+      {
+        enabled: !!namespaceUuid,
+        // Cache for 5 minutes (embeddings don't change frequently)
+        staleTime: 5 * 60 * 1000,
+        retry: false,
+        onError: (error) => {
+          console.error("Error fetching tools with embeddings:", error);
+        },
+      },
+    );
+
+  // Create Set for fast lookup (memoized to avoid recreating on every render)
+  const embeddingSet = useMemo(() => {
+    return new Set(toolsWithEmbeddings || []);
+  }, [toolsWithEmbeddings]);
+
+  // Use delete embedding mutation
+  const deleteEmbeddingMutation =
+    trpc.frontend.namespaces.deleteToolEmbedding.useMutation({
+      onSuccess: () => {
+        toast.success(t("namespaces:enhancedToolsTable.embeddingDeleted"));
+        // Invalidate embedding list
+        utils.frontend.namespaces.getToolsWithEmbeddings.invalidate({
+          namespaceUuid,
+        });
+      },
+      onError: (error) => {
+        console.error("Error deleting embedding:", error);
+        toast.error(t("namespaces:enhancedToolsTable.embeddingDeleteFailed"), {
+          description: error.message,
+        });
+      },
+    });
+
+  // Handle delete embedding
+  const handleDeleteEmbedding = async (tool: EnhancedNamespaceTool) => {
+    if (!tool.sources.saved || !tool.uuid) {
+      toast.error(t("namespaces:enhancedToolsTable.cannotDeleteEmbedding"));
+      return;
+    }
+
+    deleteEmbeddingMutation.mutate({
+      namespaceUuid,
+      toolUuid: tool.uuid,
+    });
+  };
 
   // Combine and enhance tools from both sources
   const enhancedTools: EnhancedNamespaceTool[] = useMemo(() => {
@@ -1105,17 +1166,46 @@ export function EnhancedNamespaceToolsTable({
                               )}
                             </DropdownMenuItem>
                             {tool.sources.saved && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  startEditingOverrides(toolId, tool)
-                                }
-                                disabled={editingOverrides.has(toolId)}
-                              >
-                                <Edit3 className="mr-2 h-4 w-4" />
-                                {t(
-                                  "namespaces:enhancedToolsTable.editOverrides",
-                                )}
-                              </DropdownMenuItem>
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    startEditingOverrides(toolId, tool)
+                                  }
+                                  disabled={editingOverrides.has(toolId)}
+                                >
+                                  <Edit3 className="mr-2 h-4 w-4" />
+                                  {t(
+                                    "namespaces:enhancedToolsTable.editOverrides",
+                                  )}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteEmbedding(tool)}
+                                  disabled={
+                                    !tool.uuid ||
+                                    !embeddingSet.has(tool.uuid) ||
+                                    deleteEmbeddingMutation.isPending
+                                  }
+                                  className={
+                                    tool.uuid && embeddingSet.has(tool.uuid)
+                                      ? "text-destructive focus:text-destructive"
+                                      : "text-muted-foreground"
+                                  }
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  {tool.uuid && embeddingSet.has(tool.uuid)
+                                    ? deleteEmbeddingMutation.isPending
+                                      ? t(
+                                          "namespaces:enhancedToolsTable.deletingEmbedding",
+                                        )
+                                      : t(
+                                          "namespaces:enhancedToolsTable.deleteEmbedding",
+                                        )
+                                    : t(
+                                        "namespaces:enhancedToolsTable.noEmbedding",
+                                      )}
+                                </DropdownMenuItem>
+                              </>
                             )}
                             {tool.serverUuid && (
                               <DropdownMenuItem asChild>

@@ -54,6 +54,10 @@ echo "🔄 Hot reloading is enabled for both frontend and backend"
 echo "📦 Checking dependencies..."
 pnpm install
 
+# Build workspace packages (zod-types, etc)
+echo "🔨 Building workspace packages..."
+pnpm run build --filter='@repo/*'
+
 # Run database migrations for development
 echo "🛠 Running database migrations (dev)..."
 (

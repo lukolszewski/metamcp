@@ -151,7 +151,13 @@
     "autoSaving": "Auto-saving...",
     "active": "ACTIVE",
     "inactive": "INACTIVE",
-    "editOverrides": "Edit Overrides"
+    "editOverrides": "Edit Overrides",
+    "deleteEmbedding": "Delete Embedding",
+    "deletingEmbedding": "Deleting...",
+    "noEmbedding": "No Embedding",
+    "embeddingDeleted": "Embedding deleted successfully",
+    "embeddingDeleteFailed": "Failed to delete embedding",
+    "cannotDeleteEmbedding": "Cannot delete embedding for tools not saved to namespace"
   },
   "serversTable": {
     "noServers": "No MCP Servers",

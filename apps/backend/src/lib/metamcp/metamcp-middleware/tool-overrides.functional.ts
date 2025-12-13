@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
 
@@ -255,7 +259,7 @@ async function getToolOverrides(
 /**
  * Apply overrides to tools
  */
-async function applyToolOverrides(
+export async function applyToolOverrides(
   tools: Tool[],
   namespaceUuid: string,
   useCache: boolean = true,

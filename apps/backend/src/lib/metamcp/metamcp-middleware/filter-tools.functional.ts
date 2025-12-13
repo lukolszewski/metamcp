@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
 
@@ -163,7 +167,7 @@ async function getServerUuidByName(serverName: string): Promise<string | null> {
 /**
  * Filter tools based on their status in the namespace
  */
-async function filterActiveTools(
+export async function filterActiveTools(
   tools: Tool[],
   namespaceUuid: string,
   useCache: boolean = true,

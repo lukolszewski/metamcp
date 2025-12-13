@@ -39,7 +39,7 @@ services:
       - metamcp-network
 
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: metamcp-pg
     restart: unless-stopped
     env_file:

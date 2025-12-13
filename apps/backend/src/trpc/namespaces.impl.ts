@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import {
   CreateNamespaceRequestSchema,
   CreateNamespaceResponseSchema,
@@ -25,6 +29,7 @@ import {
   namespacesRepository,
   toolsRepository,
 } from "../db/repositories";
+import { toolEmbeddingsRepository } from "../db/repositories/tool-embeddings.repo";
 import { NamespacesSerializer } from "../db/serializers";
 import {
   clearOverrideCache,
@@ -640,6 +645,73 @@ export const namespacesImplementations = {
       console.error("Error updating tool overrides:", error);
       return {
         success: false as const,
+        message:
+          error instanceof Error ? error.message : "Internal server error",
+      };
+    }
+  },
+
+  getToolsWithEmbeddings: async (
+    input: { namespaceUuid: string; modelName?: string },
+    userId: string,
+  ): Promise<string[]> => {
+    const { namespaceUuid, modelName } = input;
+
+    // Validate user owns the namespace
+    const namespace = await namespacesRepository.findByUuid(namespaceUuid);
+
+    if (!namespace) {
+      throw new Error("Namespace not found");
+    }
+
+    if (namespace.user_id && namespace.user_id !== userId) {
+      throw new Error("You do not have access to this namespace");
+    }
+
+    // Get all tool UUIDs that have embeddings
+    const toolUuids = await toolEmbeddingsRepository.getToolUuidsWithEmbeddings(
+      namespaceUuid,
+      modelName
+    );
+
+    return toolUuids;
+  },
+
+  deleteToolEmbedding: async (
+    input: { namespaceUuid: string; toolUuid: string },
+    userId: string,
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const { namespaceUuid, toolUuid } = input;
+
+      // Validate user owns the namespace
+      const namespace = await namespacesRepository.findByUuid(namespaceUuid);
+
+      if (!namespace) {
+        return {
+          success: false,
+          message: "Namespace not found",
+        };
+      }
+
+      if (namespace.user_id && namespace.user_id !== userId) {
+        return {
+          success: false,
+          message: "You do not have access to this namespace",
+        };
+      }
+
+      // Delete embedding for this tool in this namespace
+      await toolEmbeddingsRepository.deleteByToolAndNamespace(
+        toolUuid,
+        namespaceUuid
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error deleting tool embedding:", error);
+      return {
+        success: false,
         message:
           error instanceof Error ? error.message : "Internal server error",
       };

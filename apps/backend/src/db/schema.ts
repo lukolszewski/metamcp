@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import { OAuthClientInformation } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import {
@@ -9,6 +13,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -16,6 +21,7 @@ import {
   timestamp,
   unique,
   uuid,
+  customType,
 } from "drizzle-orm/pg-core";
 
 export const mcpServerTypeEnum = pgEnum(
@@ -30,6 +36,19 @@ export const mcpServerErrorStatusEnum = pgEnum(
   "mcp_server_error_status",
   McpServerErrorStatusEnum.options,
 );
+
+// Custom vector type for pgvector
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType(config) {
+    return `vector(${config?.dimensions ?? 1024})`;
+  },
+  toDriver(value: number[]): string {
+    return JSON.stringify(value);
+  },
+  fromDriver(value: string): number[] {
+    return JSON.parse(value);
+  },
+});
 
 export const mcpServersTable = pgTable(
   "mcp_servers",
@@ -139,6 +158,42 @@ export const toolsTable = pgTable(
       table.name,
     ),
   ],
+);
+
+// Tool embeddings table for AI-powered search
+export const toolEmbeddingsTable = pgTable(
+  "tool_embeddings",
+  {
+    uuid: uuid("uuid").primaryKey().defaultRandom(),
+    tool_uuid: uuid("tool_uuid")
+      .notNull()
+      .references(() => toolsTable.uuid, { onDelete: "cascade" }),
+    namespace_uuid: uuid("namespace_uuid")
+      .notNull()
+      .references(() => namespacesTable.uuid, { onDelete: "cascade" }),
+    model_name: text("model_name")
+      .notNull()
+      .default("BAAI/bge-m3"),
+    embedding_dimensions: integer("embedding_dimensions")
+      .notNull()
+      .default(1024),
+    embedding: vector("embedding", { dimensions: 1024 })
+      .$type<number[]>()
+      .notNull(),
+    embedding_text: text("embedding_text").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("tool_embeddings_namespace_idx").on(table.namespace_uuid),
+    index("tool_embeddings_tool_idx").on(table.tool_uuid),
+    index("tool_embeddings_model_idx").on(table.model_name),
+    // Note: pgvector index created in SQL migration
+  ]
 );
 
 // Better-auth tables
@@ -251,6 +306,8 @@ export const endpointsTable = pgTable(
       .references(() => namespacesTable.uuid, { onDelete: "cascade" }),
     enable_api_key_auth: boolean("enable_api_key_auth").notNull().default(true),
     enable_oauth: boolean("enable_oauth").notNull().default(false),
+    enable_smart_mode: boolean("enable_smart_mode").notNull().default(false),
+    search_mode: text("search_mode").notNull().default("keyword"),
     use_query_param_auth: boolean("use_query_param_auth")
       .notNull()
       .default(false),

@@ -1,3 +1,7 @@
+// Modifications Copyright (c) 2025 Łukasz Olszewski
+// Licensed under the GNU Affero General Public License v3.0
+// See LICENSE for details.
+
 import {
   DatabaseEndpoint,
   DatabaseEndpointWithNamespace,
@@ -14,6 +18,8 @@ export class EndpointsSerializer {
       namespace_uuid: dbEndpoint.namespace_uuid,
       enable_api_key_auth: dbEndpoint.enable_api_key_auth,
       enable_oauth: dbEndpoint.enable_oauth,
+      enable_smart_mode: dbEndpoint.enable_smart_mode,
+      search_mode: dbEndpoint.search_mode,
       use_query_param_auth: dbEndpoint.use_query_param_auth,
       created_at: dbEndpoint.created_at.toISOString(),
       updated_at: dbEndpoint.updated_at.toISOString(),
@@ -35,6 +41,8 @@ export class EndpointsSerializer {
       namespace_uuid: dbEndpoint.namespace_uuid,
       enable_api_key_auth: dbEndpoint.enable_api_key_auth,
       enable_oauth: dbEndpoint.enable_oauth,
+      enable_smart_mode: dbEndpoint.enable_smart_mode,
+      search_mode: dbEndpoint.search_mode,
       use_query_param_auth: dbEndpoint.use_query_param_auth,
       created_at: dbEndpoint.created_at.toISOString(),
       updated_at: dbEndpoint.updated_at.toISOString(),
