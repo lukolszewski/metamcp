@@ -234,4 +234,4 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for details on how to submit PRs.
 ## 📄 License
 
 **AGPL-3.0**
-*Note: This project is a hard fork of the original MIT-licensed MetaMCP proxy. Due to the significant addition of Smart Mode, AI Embeddings, and Database Persistence, this fork is released under AGPL-3.0.*
+*Note: This project is a hard fork of the original MIT-licensed MetaMCP proxy. Due to the significant addition of Smart Mode, AI Embeddings, and Vector Database, this fork is released under AGPL-3.0.*
