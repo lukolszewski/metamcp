@@ -27,7 +27,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -212,7 +212,7 @@ export function EnhancedNamespaceToolsTable({
     });
 
   // Fetch tools with embeddings (runs once)
-  const { data: toolsWithEmbeddings } =
+  const { data: toolsWithEmbeddings, error: embeddingsError } =
     trpc.frontend.namespaces.getToolsWithEmbeddings.useQuery(
       {
         namespaceUuid,
@@ -224,11 +224,15 @@ export function EnhancedNamespaceToolsTable({
         // Cache for 5 minutes (embeddings don't change frequently)
         staleTime: 5 * 60 * 1000,
         retry: false,
-        onError: (error) => {
-          console.error("Error fetching tools with embeddings:", error);
-        },
       },
     );
+
+  // Log errors from embeddings query
+  useEffect(() => {
+    if (embeddingsError) {
+      console.error("Error fetching tools with embeddings:", embeddingsError);
+    }
+  }, [embeddingsError]);
 
   // Create Set for fast lookup (memoized to avoid recreating on every render)
   const embeddingSet = useMemo(() => {
